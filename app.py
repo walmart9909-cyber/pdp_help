@@ -286,6 +286,12 @@ def validation():
     if not gtin:
         return jsonify({"error": "Sellable GTIN is required."}), 400
 
+    # Support multiple GTINs separated by commas or whitespace
+    import re
+    gtin_list = [g.strip() for g in re.split(r'[\s,]+', gtin) if g.strip()]
+    if not gtin_list:
+        return jsonify({"error": "No GTINs parsed from input."}), 400
+
     # Save uploaded file to temp folder
     try:
         filename = secure_filename(file.filename)
@@ -296,57 +302,65 @@ def validation():
         df = load_with_detected_header(temp_path, sheet_name)
         df = normalize_columns(df)
 
-        # Lookup corresponding product and color by GTIN
         cols = resolve_column_names(df)
         if not cols.get("gtin"):
             return jsonify({"error": "GTIN column not found in sheet."}), 400
-        mask = df[cols["gtin"]].astype(str).str.strip() == gtin
-        matches = df[mask]
-        if matches.empty:
-            return jsonify({"error": "GTIN not found in sheet."}), 404
-        # take first match
-        first = matches.iloc[0]
-        product_name = normalize(first[cols["product"]])
-        color = normalize(first[cols["color"]])
 
-        print(f"GTIN: {gtin}")
-        print(f"Product: {product_name}")
-        print(f"Color: {color}")
+        items = []
+        # Process each GTIN and produce an array in the exact requested shape:
+        # [status, statusCode, productName, color, mainImageUrl, additionalImagesUrls[]]
+        for g in gtin_list:
+            try:
+                mask = df[cols["gtin"]].astype(str).str.strip() == g
+                matches = df[mask]
+                if matches.empty:
+                    # GTIN not found
+                    items.append(["GTIN_NF", 404, None, None, None, []])
+                    continue
 
-        if not product_name:
-            return jsonify({"error": "Product name not found in sheet."}), 404
-        
-        if not color:
-            return jsonify({"error": "Color not found in sheet."}), 404
+                first = matches.iloc[0]
+                product_name = normalize(first[cols["product"]])
+                color = normalize(first[cols["color"]])
 
-        # Run validation using loaded dataframe and resolved product/color
-        result, image_data = check_excel(temp_path, sheet_name, product_name, color)
+                print(f"Found product: {product_name} with color: {color}")
 
-        # Map semantic outcomes to HTTP statuses (kept for informational purposes)
-        status_map = {
-            "same": 200,
-            "product not found": 404,
-            "color not there": 404,
-            "swatch is wrong": 200,
-            "something is wrong": 200,
-        }
-        semantic_status = status_map.get(result, 200)
+                if not product_name:
+                    # Product name missing
+                    items.append(["PRODUCT_NF", 404, None, None, None, []])
+                    continue
+                if not color:
+                    # Color missing
+                    items.append(["COLOR_NF", 404, product_name, None, None, []])
+                    continue
 
-        # Always return HTTP 200 when processing succeeded (no exceptions).
-        # Provide the semantic status inside the JSON so clients can still
-        # distinguish success vs. validation outcomes.
-        body = {"result": result, "semantic_status": semantic_status, "images": image_data}
-        # include resolved product and color in response when available
-        if product_name:
-            body["product"] = product_name
-        if color:
-            body["color"] = color
-        if semantic_status != 200:
-            # Keep an `error` field for UI convenience when result indicates
-            # a validation problem (previous behavior expected an `error`).
-            body["error"] = result
+                # Run validation for this product/color
+                result, image_data = check_excel(temp_path, sheet_name, product_name, color)
 
-        return jsonify(body), 200
+                # Map to requested codes/statuses
+                if result == 'same':
+                    status = 'same'
+                    code = 200
+                elif result == 'swatch is wrong':
+                    status = 'swatch is wrong'
+                    code = 200
+                elif result == 'something is wrong':
+                    status = 'something is wrong'
+                    code = 200
+                else:
+                    # fallback to raw result uppercased underscore style
+                    status = result.replace(' ', '_').upper()
+                    code = 200
+
+                main = image_data.get('main') if image_data else None
+                swatch = image_data.get('swatch') if image_data else None
+                additional = image_data.get('additional', []) if image_data else []
+                # Return shape: [status, statusCode, productName, color, mainImageUrl, swatchUrl, additionalImages[]]
+                items.append([status, code, product_name, color, main, swatch, additional])
+
+            except Exception as e:
+                items.append([f"ERROR", 500, None, None, None, []])
+
+        return jsonify({"items": items}), 200
     
     except FileNotFoundError as e:
         return jsonify({"error": str(e)}), 400
@@ -440,8 +454,8 @@ if __name__ == "__main__":
             result, image_data = check(df, product, color)
 
             # ALSO print resolved product and color so we can verify lookup
-            print(f"Resolved product: {product}")
-            print(f"Resolved color: {color}")
+            # print(f"Resolved product: {product}")
+            # print(f"Resolved color: {color}")
 
             # Print all main image URLs for the product+color (not only first)
             try:

@@ -94,6 +94,19 @@ input[type="text"] {
   font-weight: 700;
 }
 
+.form-controls button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: #e6eef8;
+  border: 1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
+}
+
+.form-controls button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.form-controls #gtin-counter { font-weight:600; }
+
 /* Ensure form fields do not stretch the card oddly on narrow screens */
 @media (max-width: 800px) {
   .panel-form .card { min-height: auto; }
@@ -183,3 +196,15 @@ input[type="file"]::-webkit-file-upload-button:hover { box-shadow: 0 4px 12px rg
 /* responsive */
 @media (max-width: 1200px) { .wrapper { grid-template-columns: 1fr 1fr; } .panel-main, .panel-additional { grid-column: 1 / -1; } }
 @media (max-width: 800px) { .wrapper { grid-template-columns: 1fr; } .panel { min-height:auto; } .main-full { height:320px; } .image-item img { height:120px; } }
+
+/* Ensure the small nav buttons in the form look like the response panel buttons */
+.panel-form .form-controls button {
+  background: linear-gradient(90deg, rgba(6,182,212,0.12), rgba(124,58,237,0.10));
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #e6eef8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  min-width: 72px;
+}
+.panel-form .form-controls button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124,58,237,0.12); }
+.panel-form .form-controls button:disabled { opacity: 0.5; cursor: not-allowed; }

@@ -1,0 +1,11 @@
+{
+  "name": "pdp-help-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "jest --config=jest.config.cjs"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}

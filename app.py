@@ -1,6 +1,8 @@
 
 from flask import jsonify, request, Flask, render_template
 from pathlib import Path
+import argparse
+import sys
 from werkzeug.utils import secure_filename
 import tempfile
 import os
@@ -24,11 +26,13 @@ DISPLAY_PRODUCT_NAME = "Product Name"
 DISPLAY_COLOR = "Color"
 DISPLAY_MAIN_IMAGE = "Main Image URL"
 DISPLAY_SWATCH = "Swatch Image URL"
+DISPLAY_GTIN = "Sellable GTIN"
 
 MACHINE_PRODUCT_NAME = "productName"
 MACHINE_COLOR = "color"
 MACHINE_MAIN_IMAGE = "mainImageUrl"
 MACHINE_SWATCH = "swatchImageUrl"
+MACHINE_GTIN = "sellableGtin"
 
 # Documentation phrases seen in Walmart templates (to filter non-data rows)
 DOC_PHRASES_IMAGE = "URL, 2500 characters - Main image of the item"
@@ -97,6 +101,7 @@ def resolve_column_names(df: pd.DataFrame) -> Dict[str, Optional[str]]:
     col_color   = pick(DISPLAY_COLOR, MACHINE_COLOR)
     col_main    = pick(DISPLAY_MAIN_IMAGE, MACHINE_MAIN_IMAGE)
     col_swatch  = pick(DISPLAY_SWATCH, MACHINE_SWATCH)  # optional
+    col_gtin    = pick(DISPLAY_GTIN, MACHINE_GTIN)    # optional
 
     missing = [
         name for name, val in [
@@ -110,7 +115,13 @@ def resolve_column_names(df: pd.DataFrame) -> Dict[str, Optional[str]]:
             f"Required column(s) missing: {missing}. Available columns: {list(df.columns)}"
         )
 
-    return {"product": col_product, "color": col_color, "main": col_main, "swatch": col_swatch}
+    return {
+        "product": col_product,
+        "color": col_color,
+        "main": col_main,
+        "swatch": col_swatch,
+        "gtin": col_gtin,
+    }
 
 def drop_non_data_rows(df: pd.DataFrame, color_col: str, image_col: str) -> pd.DataFrame:
     """
@@ -267,19 +278,48 @@ def validation():
     if file.filename == '':
         return jsonify({"error": "No file selected. Please choose an Excel file."}), 400
     
-    product_name = (request.form.get('product') or "").strip()
-    color        = (request.form.get('color') or "").strip()
+
+    gtin         = (request.form.get('gtin') or "").strip()
     sheet_name   = (request.form.get('sheetName') or DEFAULT_SHEET).strip()
 
-    if not product_name or not color:
-        return jsonify({"error": "Product name and color are required."}), 400
+    # Require GTIN only (form only sends GTIN now)
+    if not gtin:
+        return jsonify({"error": "Sellable GTIN is required."}), 400
 
     # Save uploaded file to temp folder
     try:
         filename = secure_filename(file.filename)
         temp_path = os.path.join(TEMP_FOLDER, filename)
         file.save(temp_path)
+
+        # Load sheet and detect headers so we can lookup by GTIN if provided
+        df = load_with_detected_header(temp_path, sheet_name)
+        df = normalize_columns(df)
+
+        # Lookup corresponding product and color by GTIN
+        cols = resolve_column_names(df)
+        if not cols.get("gtin"):
+            return jsonify({"error": "GTIN column not found in sheet."}), 400
+        mask = df[cols["gtin"]].astype(str).str.strip() == gtin
+        matches = df[mask]
+        if matches.empty:
+            return jsonify({"error": "GTIN not found in sheet."}), 404
+        # take first match
+        first = matches.iloc[0]
+        product_name = normalize(first[cols["product"]])
+        color = normalize(first[cols["color"]])
+
+        print(f"GTIN: {gtin}")
+        print(f"Product: {product_name}")
+        print(f"Color: {color}")
+
+        if not product_name:
+            return jsonify({"error": "Product name not found in sheet."}), 404
         
+        if not color:
+            return jsonify({"error": "Color not found in sheet."}), 404
+
+        # Run validation using loaded dataframe and resolved product/color
         result, image_data = check_excel(temp_path, sheet_name, product_name, color)
 
         # Map semantic outcomes to HTTP statuses (kept for informational purposes)
@@ -296,6 +336,11 @@ def validation():
         # Provide the semantic status inside the JSON so clients can still
         # distinguish success vs. validation outcomes.
         body = {"result": result, "semantic_status": semantic_status, "images": image_data}
+        # include resolved product and color in response when available
+        if product_name:
+            body["product"] = product_name
+        if color:
+            body["color"] = color
         if semantic_status != 200:
             # Keep an `error` field for UI convenience when result indicates
             # a validation problem (previous behavior expected an `error`).
@@ -340,5 +385,90 @@ def index():
     )
 
 if __name__ == "__main__":
-    # Run locally
+    parser = argparse.ArgumentParser(description="Run PDP Help server or utility actions")
+    parser.add_argument("--print-for-gtin", action="store_true", help="Print main and additional image URLs for a GTIN and exit")
+    parser.add_argument("--file", required=False, help="Path to Excel file for print action")
+    parser.add_argument("--gtin", required=False, help="GTIN to lookup for print action")
+    parser.add_argument("--sheet", required=False, default=None, help="Sheet name (optional)")
+    parser.add_argument("--product", required=False, help="Optional product name to override lookup")
+    parser.add_argument("--color", required=False, help="Optional color to override lookup")
+    args, rest = parser.parse_known_args()
+
+    if args.print_for_gtin:
+        # Validate required args
+        if not args.file or not args.gtin:
+            print("--file and --gtin are required for --print-for-gtin", file=sys.stderr)
+            sys.exit(2)
+
+        def print_images_for_gtin(file_path, gtin, sheet_name=None, product=None, color=None):
+            p = Path(file_path)
+            if not p.exists():
+                print(f"File not found: {p}", file=sys.stderr)
+                return 3
+
+            # load sheet
+            try:
+                sheet_to_use = sheet_name if sheet_name else DEFAULT_SHEET
+                df = load_with_detected_header(p, sheet_to_use)
+                df = normalize_columns(df)
+                cols = resolve_column_names(df)
+            except Exception as e:
+                print(f"Error loading/reading sheet: {e}", file=sys.stderr)
+                return 4
+
+            # Lookup by GTIN if product/color not provided
+            if not product or not color:
+                if not cols.get("gtin"):
+                    print("GTIN column not found in sheet", file=sys.stderr)
+                    return 5
+                mask = df[cols["gtin"]].astype(str).str.strip() == str(gtin).strip()
+                matches = df[mask]
+                if matches.empty:
+                    print("GTIN not found in sheet", file=sys.stderr)
+                    return 6
+                first = matches.iloc[0]
+                if not product:
+                    product = normalize(first[cols["product"]])
+                if not color:
+                    color = normalize(first[cols["color"]])
+
+            if not product or not color:
+                print("Product or color could not be determined.", file=sys.stderr)
+                return 7
+
+            # Run check to collect images
+            result, image_data = check(df, product, color)
+
+            # ALSO print resolved product and color so we can verify lookup
+            print(f"Resolved product: {product}")
+            print(f"Resolved color: {color}")
+
+            # Print all main image URLs for the product+color (not only first)
+            try:
+                df_prod = df[df[cols["product"]].astype(str).str.strip() == product.strip()]
+                df_pc = df_prod[df_prod[cols["color"]].astype(str).str.strip() == color.strip()]
+                main_list = [normalize(v) for v in df_pc[cols["main"]].tolist()] if cols.get("main") in df_pc.columns else []
+                main_list = [m for m in main_list if m]
+                if main_list:
+                    print("Main images:")
+                    for m in main_list:
+                        print(m)
+                else:
+                    print("No main images found for this product/color.")
+            except Exception:
+                # Fallback to whatever check() returned
+                main = image_data.get("main")
+                if main:
+                    print(main)
+
+            # Then additional images (as before)
+            for u in image_data.get("additional", []):
+                print(u)
+
+            return 0
+
+        rc = print_images_for_gtin(args.file, args.gtin, sheet_name=args.sheet, product=args.product, color=args.color)
+        sys.exit(rc)
+
+    # Otherwise run the Flask app normally
     app.run(host="0.0.0.0", port=5000, debug=True)

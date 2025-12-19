@@ -7,18 +7,22 @@ document.addEventListener('DOMContentLoaded', () => {
     ev.preventDefault();
 
     const fileInput = document.getElementById('excelFile');
-    const product = document.getElementById('productName').value.trim();
-    const color = document.getElementById('color').value.trim();
-    
-    if (!fileInput.files.length || !product || !color) {
-      alert('Please select a file, and enter Product Name and Color.');
+    const gtin = document.getElementById('gtin').value.trim();
+
+    if (!fileInput.files.length) {
+      alert('Please select an Excel file.');
+      return;
+    }
+
+    if (!gtin) {
+      alert('Please enter Sellable GTIN.');
       return;
     }
 
     const formData = new FormData();
     formData.append('excelFile', fileInput.files[0]);
-    formData.append('product', product);
-    formData.append('color', color);
+    formData.append('gtin', gtin);
+ 
     const sheetName = document.getElementById('sheetName').value.trim();
     if (sheetName) {
       formData.append('sheetName', sheetName);
@@ -58,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (r === 'same') {
             resultBox.innerHTML = `<span class="result-icon">✅</span><span class="result-text">${escapeHtml(r)}</span>`;
             resultBox.classList.add('result-success');
-            displayImages(payload.images || {});
+            displayImages(payload);
           } else if (r === 'swatch is wrong') {
             resultBox.innerHTML = `<span class="result-icon">⚠️</span><span class="result-text">${escapeHtml(r)}</span>`;
             resultBox.classList.add('result-warning');
@@ -87,68 +91,67 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function displayImages(imageData) {
-  const mainSwatchContainer = document.getElementById('main-swatch-container');
-  const additionalContainer = document.getElementById('additional-container');
-  const mainImageSection = document.getElementById('main-image-section');
-  const additionalImagesSection = document.getElementById('additional-images-section');
-  const swatchImageSection = document.getElementById('swatch-image-section');
-  
-  // Reset sections
-  mainImageSection.style.display = 'none';
-  additionalImagesSection.style.display = 'none';
-  swatchImageSection.style.display = 'none';
-  mainSwatchContainer.style.display = 'none';
-  additionalContainer.style.display = 'none';
-  
-  // Display main image
-  if (imageData.main) {
-    const mainImg = document.getElementById('main-image');
-    mainImg.src = imageData.main;
-    mainImg.onerror = function() {
-      this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f0f0f0" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="14"%3EImage not found%3C/text%3E%3C/svg%3E';
-    };
-    mainImageSection.style.display = 'block';
-    mainSwatchContainer.style.display = 'block';
+function displayImages(payload) {
+  // payload contains at least: images, product, color, maybe gtin
+  const images = payload.images || {};
+  const responseMeta = document.getElementById('response-meta');
+  const responseGtin = document.getElementById('response-gtin');
+  const responseProduct = document.getElementById('response-product');
+  const responseColor = document.getElementById('response-color');
+  const swatchPanel = document.getElementById('swatch-panel');
+  const responseSwatchImg = document.getElementById('response-swatch-img');
+  const fullMainImage = document.getElementById('full-main-image');
+  const additionalGrid = document.getElementById('additional-images-grid');
+
+  // show meta
+  responseMeta.style.display = 'block';
+  responseGtin.textContent = payload.gtin || document.getElementById('gtin').value || '';
+  responseProduct.textContent = payload.product || '';
+  responseColor.textContent = payload.color || '';
+
+  // swatch
+  if (images.swatch) {
+    responseSwatchImg.src = images.swatch;
+    responseSwatchImg.onerror = () => { responseSwatchImg.src = ''; };
+    swatchPanel.style.display = 'block';
+  } else {
+    swatchPanel.style.display = 'none';
   }
-  
-  // Display swatch image
-  if (imageData.swatch) {
-    const swatchImg = document.getElementById('swatch-image');
-    swatchImg.src = imageData.swatch;
-    swatchImg.onerror = function() {
-      this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="150" height="150"%3E%3Crect fill="%23f0f0f0" width="150" height="150"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="12"%3EImage not found%3C/text%3E%3C/svg%3E';
-    };
-    swatchImageSection.style.display = 'block';
-    mainSwatchContainer.style.display = 'block';
+
+  // full main
+  if (images.main) {
+    fullMainImage.src = images.main;
+    fullMainImage.onerror = () => { fullMainImage.src = ''; };
+  } else {
+    fullMainImage.src = '';
   }
-  
-  // Display additional images
-  if (imageData.additional && imageData.additional.length > 0) {
-    const grid = document.getElementById('additional-images-grid');
-    grid.innerHTML = '';
-    imageData.additional.forEach((imgUrl, index) => {
-      const imgContainer = document.createElement('div');
-      imgContainer.className = 'image-item';
+
+  // additional images grid
+  additionalGrid.innerHTML = '';
+  if (images.additional && images.additional.length) {
+    images.additional.forEach((url, i) => {
+      const item = document.createElement('div');
+      item.className = 'image-item';
       const img = document.createElement('img');
-      img.src = imgUrl;
-      img.alt = `Additional Image ${index + 1}`;
-      img.onerror = function() {
-        this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="150" height="150"%3E%3Crect fill="%23f0f0f0" width="150" height="150"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="12"%3EImage not found%3C/text%3E%3C/svg%3E';
-      };
-      imgContainer.appendChild(img);
-      grid.appendChild(imgContainer);
+      img.src = url;
+      img.alt = `Additional ${i+1}`;
+      img.onerror = () => { img.src = ''; };
+      item.appendChild(img);
+      additionalGrid.appendChild(item);
     });
-    additionalImagesSection.style.display = 'block';
-    additionalContainer.style.display = 'block';
   }
 }
 
 function hideAllImages() {
-  const mainSwatchContainer = document.getElementById('main-swatch-container');
-  const additionalContainer = document.getElementById('additional-container');
-  mainSwatchContainer.style.display = 'none';
-  additionalContainer.style.display = 'none';
+  // hide response panels
+  const responseMeta = document.getElementById('response-meta');
+  const swatchPanel = document.getElementById('swatch-panel');
+  const fullMainImage = document.getElementById('full-main-image');
+  const additionalGrid = document.getElementById('additional-images-grid');
+  responseMeta.style.display = 'none';
+  swatchPanel.style.display = 'none';
+  fullMainImage.src = '';
+  additionalGrid.innerHTML = '';
 }
 
 // small utility to avoid inserting raw HTML from server

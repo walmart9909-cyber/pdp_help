@@ -8,56 +8,67 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <div class="wrapper">
-    <div class="form-section">
-      <h2>Product Info</h2>
-      <form action="/check" method="POST" id="product-form" enctype="multipart/form-data">
-        <div class="input-field">
-          <label for="excelFile">Upload Excel File</label>
-          <input type="file" id="excelFile" name="excelFile" accept=".xlsx,.xls" required />
-        </div>
+  <div class="wrapper four-panel">
+    <!-- Panel 1: Form -->
+    <div class="panel panel-form">
+      <div class="card">
+        <h2>Product Info</h2>
+        <form action="/check" method="POST" id="product-form" enctype="multipart/form-data">
+          <div class="input-field">
+            <label for="excelFile">Upload Excel File</label>
+            <input type="file" id="excelFile" name="excelFile" accept=".xlsx,.xls" required />
+          </div>
 
-        <div class="input-field">
-          <label for="productName">Product Name</label>
-          <input type="text" id="productName" name="productName" placeholder="Enter product name" value="{{ last_product or '' }}" required />
-        </div>
+          <div class="input-field">
+            <label for="gtin">Sellable GTIN</label>
+            <input type="text" id="gtin" name="gtin" placeholder="Enter Sellable GTIN" required />
+          </div>
 
-        <div class="input-field">
-          <label for="color">Color</label>
-          <input type="text" id="color" name="color" placeholder="Enter color" value="{{ last_color or '' }}" required />
-        </div>
+          <div class="input-field">
+            <label for="sheetName">Sheet Name (optional)</label>
+            <input type="text" id="sheetName" name="sheetName" placeholder="{{ default_sheet }}" value="{{ default_sheet }}" />
+          </div>
 
-        <div class="input-field">
-          <label for="sheetName">Sheet Name (optional)</label>
-          <input type="text" id="sheetName" name="sheetName" placeholder="{{ default_sheet }}" value="{{ default_sheet }}" />
-        </div>
-
-        <button type="submit">Check Product</button>
-      </form>
-    </div>
-
-    <div class="images-main-section">
-      <div id="result" class="result-box" role="status" aria-live="polite">
-        <span class="result-text" style="opacity:.9">Awaiting input — submit the form to run the check.</span>
-      </div>
-      <div id="main-swatch-container" class="images-container" style="display: none;">
-        <div id="main-image-section" class="image-section" style="display: none;">
-          <h4>Main Image</h4>
-          <img id="main-image" src="" alt="Main Product Image" />
-        </div>
-        <div id="swatch-image-section" class="image-section" style="display: none;">
-          <h4>Swatch Image</h4>
-          <img id="swatch-image" src="" alt="Swatch Image" />
-        </div>
+          <button type="submit">Check Product</button>
+        </form>
       </div>
     </div>
 
-    <div class="images-additional-section">
-      <div id="additional-container" class="images-container" style="display: none;">
+    <!-- Panel 2: Response + Product/Color + Swatch -->
+    <div class="panel panel-response">
+      <div class="card">
+        <div id="result" class="result-box" role="status" aria-live="polite">
+          <span class="result-text" style="opacity:.9">Awaiting input — submit the form to run the check.</span>
+        </div>
+
+        <div id="response-meta" class="response-meta" style="display:none; margin-top:16px;">
+          <div class="meta-row"><strong>GTIN:</strong> <span id="response-gtin"></span></div>
+          <div class="meta-row"><strong>Product:</strong> <span id="response-product"></span></div>
+          <div class="meta-row"><strong>Color:</strong> <span id="response-color"></span></div>
+        </div>
+
+        <div id="swatch-panel" style="display:none; margin-top:16px;">
+          <h4>Swatch</h4>
+          <img id="response-swatch-img" src="" alt="Swatch" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Full Main Image -->
+    <div class="panel panel-main">
+      <div class="card">
+        <h3>Main Image</h3>
+        <div class="main-full">
+          <img id="full-main-image" src="" alt="Full Main Image" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 4: Additional Images (2 per row) -->
+    <div class="panel panel-additional">
+      <div class="card">
         <h3>Additional Images</h3>
-        <div id="additional-images-section" class="image-section" style="display: block;">
-          <div id="additional-images-grid" class="images-grid"></div>
-        </div>
+        <div id="additional-images-grid" class="images-grid"></div>
       </div>
     </div>
   </div>

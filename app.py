@@ -196,10 +196,6 @@ def check(df: pd.DataFrame, product_name: str, color: str) -> tuple:
             if not column_valid(df_pc[col]):
                 return "something is wrong", {}
 
-    if cols["swatch"] and cols["swatch"] in df_pc.columns:
-        if not column_valid(df_pc[cols["swatch"]]):
-            return "swatch is wrong", {}
-
     # Collect image data on success
     image_data = {}
     
@@ -221,6 +217,10 @@ def check(df: pd.DataFrame, product_name: str, color: str) -> tuple:
                 additional_images.append(add_val)
     if additional_images:
         image_data["additional"] = additional_images
+
+    if cols["swatch"] and cols["swatch"] in df_pc.columns:
+        if not column_valid(df_pc[cols["swatch"]]):
+            return "swatch is wrong", image_data
     
     # Swatch image - optional
     if cols["swatch"] and cols["swatch"] in df_pc.columns:

@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = navigator.currentIndex();
         if (idx >= 0) results[idx] = item;
 
-        if (item.response && String(item.response).toLowerCase() === 'same') {
+        if (item.response && (String(item.response).toLowerCase() === 'same') || (String(item.response).toLowerCase() === 'swatch is wrong')) {
           resultBox.innerHTML = `<span class="result-icon">✅</span><span class="result-text">${escapeHtml(item.response)}</span>`;
           resultBox.classList.add('result-success');
           displaySelectedItem(item);
